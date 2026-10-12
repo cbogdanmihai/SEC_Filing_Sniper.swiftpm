@@ -3,6 +3,8 @@ import Foundation
 struct Filing: Identifiable, Sendable {
     let id: String
     let title: String
+    let company: String
+    let ticker: String?
     let form: String
     let url: URL
     let feedDate: Date?
@@ -77,7 +79,38 @@ private final class FeedParser: NSObject, XMLParserDelegate {
 actor EDGARService {
     private let url = URL(string: "https://www.sec.gov/cgi-bin/browse-edgar?action=getcurrent&output=atom&count=100")!
     private var seen: [String: Filing] = [:]
-    private let iso = ISO8601DateFormatter()
+    private var tickerMap: [String: String] = [:]
+    private var lastTickerAttempt: Date = .distantPast
+    private struct SECCompany: Decodable {
+        let cik_str: Int
+        let ticker: String
+    }
+    private func loadTickers() async {
+        guard tickerMap.isEmpty && Date().timeIntervalSince(lastTickerAttempt) > 3600 else { return }
+        lastTickerAttempt = Date()
+        do {
+            var req = URLRequest(url: URL(string: "https://www.sec.gov/files/company_tickers.json")!)
+            req.setValue("SEC Filing Sniper sec-sniper-contact@example.com", forHTTPHeaderField: "User-Agent")
+            req.timeoutInterval = 12
+            let (data, response) = try await URLSession.shared.data(for: req)
+            guard (response as? HTTPURLResponse)?.statusCode == 200 else { return }
+            let result = try JSONDecoder().decode([String: SECCompany].self, from: data)
+            tickerMap = Dictionary(uniqueKeysWithValues: result.values.map { (String($0.cik_str), $0.ticker) })
+        } catch { }
+    }
+    private func issuer(_ title: String) -> (String, String?) {
+        let fragments = title.components(separatedBy: " - ")
+        let part = fragments.count > 1 ? fragments.dropFirst().joined(separator: " - ") : title
+        guard let left = part.firstIndex(of: "("), let right = part[left...].firstIndex(of: ")") else {
+            return (part, nil)
+        }
+        let number = String(part[part.index(after: left)..<right])
+        guard !number.isEmpty, number.allSatisfy({ $0.isNumber }), let cik = Int(number) else {
+            return (part, nil)
+        }
+        let name = String(part[..<left]).trimmingCharacters(in: .whitespacesAndNewlines)
+        return (name.isEmpty ? title : name, String(cik))
+    }
 
     func fetch() async throws -> [Filing] {
         var request = URLRequest(url: url)
@@ -90,6 +123,7 @@ actor EDGARService {
             throw URLError(.badServerResponse)
         }
         let entries = try FeedParser.parse(data)
+        await loadTickers()
         guard !entries.isEmpty else { throw URLError(.cannotParseResponse) }
         let now = Date()
         for item in entries {
@@ -102,7 +136,9 @@ actor EDGARService {
             let timestamp = item["updated"] ?? item["published"]
             let date = timestamp.flatMap { ISO8601DateFormatter().date(from: $0.trimmingCharacters(in: .whitespacesAndNewlines)) }
             let (priority, sentiment, reason) = FilingJudge.rate(form: form, title: title)
-            seen[id] = Filing(id: id, title: title, form: form, url: link, feedDate: date,
+            let info = issuer(title)
+            let ticker = title.lowercased().contains("(reporting)") ? nil : info.1.flatMap { tickerMap[$0] }
+            seen[id] = Filing(id: id, title: title, company: info.0, ticker: ticker, form: form, url: link, feedDate: date,
                               firstSeen: now, priority: priority, sentiment: sentiment, reason: reason)
         }
         if seen.count > 500 {
