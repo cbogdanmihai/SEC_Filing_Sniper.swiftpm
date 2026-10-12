@@ -81,7 +81,7 @@ struct ContentView: View {
                 if sort == kind { Image(systemName: ascending ? "chevron.up" : "chevron.down") }
             }
             .font(.caption.bold())
-            .foregroundStyle(sort == kind ? .orange : .white)
+            .foregroundStyle(sort == kind ? Color.orange : Color.white)
             .frame(width: width, alignment: alignment)
         }
         .buttonStyle(.plain)
@@ -102,7 +102,7 @@ struct ContentView: View {
     }
     private func line(_ f: Filing, index: Int) -> some View {
         HStack(spacing: 12) {
-            Text(f.ticker ?? "—").foregroundStyle(f.ticker == nil ? .secondary : .cyan)
+            Text(f.ticker ?? "—").foregroundStyle(f.ticker == nil ? Color.secondary : Color.cyan)
                 .fontWeight(.bold).frame(width: 95, alignment: .leading)
             Text(f.company).lineLimit(1).frame(width: 250, alignment: .leading)
             Text(f.form).foregroundStyle(.yellow).frame(width: 85, alignment: .leading)
@@ -110,7 +110,7 @@ struct ContentView: View {
             Text(time(f.firstSeen)).frame(width: 130, alignment: .leading)
             Text(f.lagSeconds.map { "\($0)s" } ?? "—")
                 .foregroundStyle(.secondary).frame(width: 100, alignment: .leading)
-            Text("\(f.priority) · \(f.sentiment)").foregroundStyle(f.sentiment.hasPrefix("BEAR") ? .red : f.sentiment.hasPrefix("BULL") ? .green : .yellow)
+            Text("\(f.priority) · \(f.sentiment)").foregroundStyle(f.sentiment.hasPrefix("BEAR") ? Color.red : (f.sentiment.hasPrefix("BULL") ? Color.green : Color.yellow))
                 .lineLimit(1).minimumScaleFactor(0.75).frame(width: 85, alignment: .trailing)
             Link(destination: f.url) {
                 Image(systemName: "arrow.up.right.square").foregroundStyle(.cyan)
@@ -127,7 +127,7 @@ struct ContentView: View {
                 Label("SEC SNIPER", systemImage: "bolt.fill").font(.title2.bold()).foregroundStyle(.orange)
                 Spacer()
                 Text(model.error == nil ? "● LIVE POLLING" : "● SOURCE ERROR")
-                    .foregroundStyle(model.error == nil ? .green : .red).font(.caption.monospaced())
+                    .foregroundStyle(model.error == nil ? Color.green : Color.red).font(.caption.monospaced())
             }.padding()
             HStack(spacing: 12) {
                 Picker("Priority", selection: $priority) {
