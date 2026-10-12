@@ -32,6 +32,7 @@ struct ContentView: View {
     @State private var search = ""
     @State private var priority = 0
     @State private var pollSeconds = 15
+    @State private var period = 7
     @State private var sort: FilingSort = .feed
     @State private var ascending = false
     @Environment(\.scenePhase) private var scenePhase
@@ -46,7 +47,7 @@ struct ContentView: View {
     }
     private var rows: [Filing] {
         let subset = model.filings.filter {
-            $0.priority >= priority && (search.isEmpty ||
+            $0.priority >= priority && (period == 0 || ($0.feedDate.map { Date().timeIntervalSince($0) <= Double(period) * 86400 && Date().timeIntervalSince($0) >= -120 } ?? false)) && (search.isEmpty ||
                 $0.company.localizedCaseInsensitiveContains(search) ||
                 ($0.ticker ?? "").localizedCaseInsensitiveContains(search) ||
                 $0.form.localizedCaseInsensitiveContains(search))
@@ -86,10 +87,10 @@ struct ContentView: View {
         }
         .buttonStyle(.plain)
     }
-    private var header: some View {
+    private func header(companyWidth: CGFloat) -> some View {
         HStack(spacing: 12) {
             heading(.ticker, width: 95)
-            heading(.company, width: 250)
+            heading(.company, width: companyWidth)
             heading(.form, width: 85)
             heading(.feed, width: 130)
             heading(.detected, width: 130)
@@ -100,11 +101,11 @@ struct ContentView: View {
         .padding(.horizontal, 12).padding(.vertical, 14)
         .background(Color(red: 0.14, green: 0.20, blue: 0.29))
     }
-    private func line(_ f: Filing, index: Int) -> some View {
+    private func line(_ f: Filing, index: Int, companyWidth: CGFloat) -> some View {
         HStack(spacing: 12) {
             Text(f.ticker ?? "—").foregroundStyle(f.ticker == nil ? Color.secondary : Color.cyan)
                 .fontWeight(.bold).frame(width: 95, alignment: .leading)
-            Text(f.company).lineLimit(1).frame(width: 250, alignment: .leading)
+            Text(f.company).lineLimit(1).frame(width: companyWidth, alignment: .leading)
             Text(f.form).foregroundStyle(.yellow).frame(width: 85, alignment: .leading)
             Text(time(f.feedDate)).frame(width: 130, alignment: .leading)
             Text(time(f.firstSeen)).frame(width: 130, alignment: .leading)
@@ -135,6 +136,12 @@ struct ContentView: View {
                     Text("High 70+").tag(70)
                     Text("Critical 85+").tag(85)
                 }.pickerStyle(.segmented)
+                Picker("Period", selection: $period) {
+                    Text("24h").tag(1)
+                    Text("7d").tag(7)
+                    Text("All").tag(0)
+                }
+                .frame(width: 105)
                 TextField("Ticker / company / form", text: $search)
                     .textFieldStyle(.roundedBorder).frame(width: 240)
                 Picker("Refresh", selection: $pollSeconds) {
@@ -147,27 +154,46 @@ struct ContentView: View {
                 }.buttonStyle(.borderedProminent).disabled(model.refreshing)
             }.padding(.horizontal)
             HStack {
-                Text("Checked: \(time(model.lastCheck)) ET")
+                Text("LAST POLL  \(time(model.lastCheck)) ET")
                 Spacer()
-                Text("\(rows.count) shown / \(model.filings.count) total")
+                Text("\(rows.count) visible  •  \(model.filings.count) cached")
             }.font(.caption.monospaced()).foregroundStyle(.secondary).padding(12)
+            if Calendar(identifier: .gregorian).dateComponents(in: TimeZone(identifier: "America/New_York")!, from: Date()).year == 2026 &&
+               Calendar(identifier: .gregorian).dateComponents(in: TimeZone(identifier: "America/New_York")!, from: Date()).month == 10 &&
+               Calendar(identifier: .gregorian).dateComponents(in: TimeZone(identifier: "America/New_York")!, from: Date()).day == 12 {
+                HStack(spacing: 8) {
+                    Image(systemName: "calendar.badge.exclamationmark")
+                    Text("EDGAR CLOSED · Columbus Day · Oct 12, 2026")
+                    Spacer()
+                    Text("Last filing day: Oct 9")
+                }
+                .font(.caption.bold())
+                .foregroundStyle(Color.orange)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(Color.orange.opacity(0.10))
+            }
             if let error = model.error {
                 Text("SEC ERROR: \(error)").foregroundStyle(.red).font(.caption)
             }
-            ScrollView(.horizontal) {
-                VStack(spacing: 0) {
-                    header
-                    ScrollView(.vertical) {
-                        LazyVStack(spacing: 0) {
-                            ForEach(Array(rows.enumerated()), id: \.element.id) { index, filing in
-                                line(filing, index: index)
+            GeometryReader { proxy in
+                let targetWidth = max(proxy.size.width, 990)
+                let companyWidth = max(250, targetWidth - 840)
+                ScrollView(.horizontal) {
+                    VStack(spacing: 0) {
+                        header(companyWidth: companyWidth)
+                        ScrollView(.vertical) {
+                            LazyVStack(spacing: 0) {
+                                ForEach(Array(rows.enumerated()), id: \.element.id) { index, filing in
+                                    line(filing, index: index, companyWidth: companyWidth)
+                                }
                             }
                         }
                     }
+                    .frame(width: targetWidth, alignment: .leading)
                 }
-                .frame(minWidth: 1060)
             }
-            Text("Tap column headers to sort. Feed → Seen is NOT measured SEC publication latency. Tickers use SEC issuer CIK mapping; — means not verified. Polling only while app is active.")
+            Text("SORT: tap headers  ·  Feed → Seen is NOT SEC publication latency  ·  Missing ticker = unverified CIK  ·  Polling requires app open")
                 .font(.caption2).foregroundStyle(.secondary).padding(8)
         }
         .background(Color(red: 0.035, green: 0.06, blue: 0.10))
