@@ -15,7 +15,7 @@ let package = Package(
             appIcon: .placeholder(icon: .star),
             accentColor: .presetColor(.orange),
             supportedDeviceFamilies: [.pad],
-            supportedInterfaceOrientations: [.landscapeLeft, .landscapeRight, .portrait]
+            supportedInterfaceOrientations: [.landscapeLeft, .landscapeRight, .portrait, .portraitUpsideDown]
         )
     ],
     targets: [

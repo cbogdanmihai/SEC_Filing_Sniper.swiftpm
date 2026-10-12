@@ -95,7 +95,14 @@ actor EDGARService {
             let (data, response) = try await URLSession.shared.data(for: req)
             guard (response as? HTTPURLResponse)?.statusCode == 200 else { return }
             let result = try JSONDecoder().decode([String: SECCompany].self, from: data)
-            tickerMap = Dictionary(uniqueKeysWithValues: result.values.map { (String($0.cik_str), $0.ticker) })
+            // The SEC table can contain multiple share classes for one CIK.
+            // Dictionary(uniqueKeysWithValues:) would crash on those duplicates.
+            var mapping: [String: String] = [:]
+            for company in result.values.sorted(by: { $0.ticker < $1.ticker }) {
+                let cik = String(company.cik_str)
+                if mapping[cik] == nil { mapping[cik] = company.ticker }
+            }
+            tickerMap = mapping
         } catch { }
     }
     private func issuer(_ title: String) -> (String, String?) {
@@ -123,7 +130,6 @@ actor EDGARService {
             throw URLError(.badServerResponse)
         }
         let entries = try FeedParser.parse(data)
-        await loadTickers()
         guard !entries.isEmpty else { throw URLError(.cannotParseResponse) }
         let now = Date()
         for item in entries {
@@ -144,6 +150,19 @@ actor EDGARService {
         if seen.count > 500 {
             let keep = seen.values.sorted { $0.firstSeen > $1.firstSeen }.prefix(350)
             seen = Dictionary(uniqueKeysWithValues: keep.map { ($0.id, $0) })
+        }
+        // Fetch symbols after the filing feed is ingested, never before it.
+        await loadTickers()
+        if !tickerMap.isEmpty {
+            for (id, filing) in seen where filing.ticker == nil && !filing.title.lowercased().contains("(reporting)") {
+                let info = issuer(filing.title)
+                if let cik = info.1, let symbol = tickerMap[cik] {
+                    seen[id] = Filing(id: filing.id, title: filing.title, company: filing.company,
+                                      ticker: symbol, form: filing.form, url: filing.url,
+                                      feedDate: filing.feedDate, firstSeen: filing.firstSeen,
+                                      priority: filing.priority, sentiment: filing.sentiment, reason: filing.reason)
+                }
+            }
         }
         return seen.values.sorted {
             if $0.firstSeen != $1.firstSeen { return $0.firstSeen > $1.firstSeen }
