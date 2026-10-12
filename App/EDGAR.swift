@@ -1,5 +1,4 @@
 import Foundation
-import FoundationXML
 
 struct Filing: Identifiable, Sendable {
     let id: String
