@@ -12,7 +12,7 @@ let package = Package(
             bundleIdentifier: "com.cbogdanmihai.SECFilingSniper",
             displayVersion: "1.0",
             bundleVersion: "1",
-            appIcon: .placeholder(icon: .bolt),
+            appIcon: .placeholder(icon: .star),
             accentColor: .presetColor(.orange),
             supportedDeviceFamilies: [.pad],
             supportedInterfaceOrientations: [.landscapeLeft, .landscapeRight, .portrait]
